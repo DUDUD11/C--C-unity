@@ -13,7 +13,9 @@ unity singleplay game을 multiplay game으로 만들어보자.
 
 구현한 내용:
 db를 활용한 로그인,
+
 (포탄처리, 움직임 처리(udp)) 동기화,
+
 유저목록 로비, 게임 도중 접속 구현 (redis)
 
 
