@@ -1,6 +1,8 @@
 개발 목표:
 unity singleplay game을 multiplay game으로 만들어보자.
 
+동영상 : https://vimeo.com/880106602?share=copy
+
 개발 환경: 
 - c++(visual studio 2019)
 - docker(redis - hiredis, mysql)
