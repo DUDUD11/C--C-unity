@@ -38,11 +38,11 @@ public class GameManager : MonoBehaviour
     private EndPoint m_RemoteEndPoint_TCP;
     public ShellSend m_SendshellFireInformation;
     public ShellFireInformation m_ReceiveshellFireInformation;
-   // private int m_ByteSize_TCP = 44;
+    // private int m_ByteSize_TCP = 44;
 
     public string m_Myid;
     public int m_TankId;
-    public int m_TankUsers=4;
+    public int m_TankUsers = 4;
     public int m_NumRoundsToWin = 5;
     public float m_StartDelay = 3f;
     public float m_EndDelay = 3f;
@@ -60,6 +60,9 @@ public class GameManager : MonoBehaviour
     private TankHealth m_TankHealth;
     private TankShooting[] m_TankShooting;
 
+    private Boolean enemyTargetStatus;
+    public Boolean get_shell;
+    private byte[] pack;
 
 
     private void Awake()
@@ -73,7 +76,7 @@ public class GameManager : MonoBehaviour
         InitClient();
         m_Myid = GameLobbyManager.GL_Id;
         m_TankId = GameLobbyManager.GL_TankId;
-       // m_TankUsers = Button.m_WholeIdNumber;
+        // m_TankUsers = Button.m_WholeIdNumber;
     }
 
     private void Start()
@@ -91,22 +94,41 @@ public class GameManager : MonoBehaviour
 
         StartCoroutine(GameLoop());
 
-        Debug.Log(m_TankId % 4);
+        enemyTargetStatus = false;
 
-        m_TankHealth = m_Tanks[m_TankId%4].m_Instance.GetComponent<TankHealth>();
+        Debug.Log(m_TankId);
+
+        m_TankHealth = m_Tanks[m_TankId % 4].m_Instance.GetComponent<TankHealth>();
         for (int i = 0; i < m_TankUsers; i++)
         {
             m_TankShooting[i] = m_Tanks[i].m_Instance.GetComponent<TankShooting>();
         }
-       // Send();
+
+        get_shell = false;
+        // Send();
 
     }
 
- 
+
 
     private void FixedUpdate()
     {
+        Application.targetFrameRate = 1 / 60;
+
         SetSendPacket();
+        if (enemyTargetStatus)
+        {
+            SetEnemyTankStatus(m_ReceivePacket);
+
+            enemyTargetStatus = false;
+        }
+
+        if (get_shell)
+        {
+            Shell_do();
+            get_shell = false;
+
+        }
 
         //  Send();
         //  Receive();   
@@ -119,8 +141,8 @@ public class GameManager : MonoBehaviour
 
         m_RemoteIpEndPoint = new IPEndPoint(IPAddress.Parse(m_Ip), m_Port);
         m_Client = new UdpClient();
-        
-     
+
+
         m_ThrdReceive = new Thread(Send);
         m_IsThreading = true;
 
@@ -131,7 +153,7 @@ public class GameManager : MonoBehaviour
 
         //   m_Client.Client.Blocking = false;
 
-      
+
 
 
         m_SendPacket.m_Transform = new float[3];
@@ -140,16 +162,16 @@ public class GameManager : MonoBehaviour
 
         //tcp
 
-       // m_ServerIpEndPoint = new IPEndPoint(IPAddress.Parse(m_Ip_TCP), m_Port_TCP);
+        // m_ServerIpEndPoint = new IPEndPoint(IPAddress.Parse(m_Ip_TCP), m_Port_TCP);
 
         m_ServerIpEndPoint = GameLobbyManager.gamelobbymanager.GETIPENDPOINT();
 
 
         // m_Client_TCP = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         m_Client_TCP = GameLobbyManager.gamelobbymanager.GETSOCKET();
-            
 
-      //  m_Client_TCP.Connect(m_ServerIpEndPoint);
+
+        //  m_Client_TCP.Connect(m_ServerIpEndPoint);
 
         m_SendshellFireInformation.type = 5;
 
@@ -163,18 +185,18 @@ public class GameManager : MonoBehaviour
     private void Send()
     {
 
-        while(m_IsThreading)
+        while (m_IsThreading)
         {
 
-            Thread.Sleep(0);
+            Thread.Sleep(50);
 
 
-                try
-                {
+            try
+            {
 
 
 
-           
+
                 byte[] bytes = StructToByteArray(m_SendPacket);
                 m_Client.Send(bytes, bytes.Length, m_Ip, m_Port);
 
@@ -195,17 +217,17 @@ public class GameManager : MonoBehaviour
 
                 Receive();
 
-                }
+            }
 
             catch (Exception ex)
-                {
+            {
                 Debug.Log(ex.ToString());
                 return;
 
-                }
             }
+        }
 
-        
+
     }
 
     public void Fire_Transmission(Vector3 pos, Quaternion rot, Vector3 vel)
@@ -233,7 +255,7 @@ public class GameManager : MonoBehaviour
             byte[] sendPacket = StructToByteArray(m_SendshellFireInformation);
             m_Client_TCP.Send(sendPacket, 0, sendPacket.Length, SocketFlags.None);
 
-         
+
 
         }
 
@@ -242,20 +264,20 @@ public class GameManager : MonoBehaviour
             Debug.Log(ex.ToString());
             return;
         }
-    
-    
-    
+
+
+
     }
 
-    public void Get_Shell(byte[] packet)
+    public void Shell_do()
     {
-       
-            try
-            {
 
-                m_ReceiveshellFireInformation = ByteArrayToStruct<ShellFireInformation>(packet);
+        try
+        {
 
-                
+            m_ReceiveshellFireInformation = ByteArrayToStruct<ShellFireInformation>(pack);
+
+
             /*
             Debug.Log($"[Receive] {packet.Length} byte");
 
@@ -269,28 +291,32 @@ public class GameManager : MonoBehaviour
     $"{m_ReceiveshellFireInformation.m_Rotation[3]} " +
     $"m_ReceivePacket.m_Health = { m_ReceivePacket.m_Health} "
     );
-              */  
+              */
 
 
-            }
+        }
 
-            catch (Exception ex)
-            {
-                Debug.Log(ex.ToString());
-                return;
-            }
-
-   
-                Generate_Enemy_Shell(m_ReceiveshellFireInformation); // 받은 값 처리
-            
-        
+        catch (Exception ex)
+        {
+            Debug.Log(ex.ToString());
+            return;
+        }
 
 
+        Generate_Enemy_Shell(m_ReceiveshellFireInformation); // 받은 값 처리
+
+    }
+
+
+    public void Get_Shell(byte[] packet)
+    {
+        get_shell = true;
+        pack = packet;
     }
 
     private void Generate_Enemy_Shell(ShellFireInformation recv)
     {
-        int i = recv.m_TankId%4;
+        int i = recv.m_TankId % 4;
 
         Vector3 pos = new Vector3(recv.m_Transform[0], recv.m_Transform[1], recv.m_Transform[2]);
         Quaternion rot = new Quaternion(recv.m_Rotation[0], recv.m_Rotation[1], recv.m_Rotation[2], recv.m_Rotation[3]);
@@ -301,7 +327,6 @@ public class GameManager : MonoBehaviour
         ShellInstance.velocity = vel;
 
 
-  
     }
 
     private void Receive()
@@ -310,9 +335,9 @@ public class GameManager : MonoBehaviour
 
         if (m_Client.Available != 0)
         {
-            
 
-            byte[] packet=new byte[m_ByteSize];
+
+            byte[] packet = new byte[m_ByteSize];
 
             try
             {
@@ -321,29 +346,24 @@ public class GameManager : MonoBehaviour
                 m_ReceivePacket = ByteArrayToStruct<PacketExchange>(packet);
 
 
-              /*
-                
-                Debug.Log($"[Receive] {m_RemoteIpEndPoint.Address}:{m_RemoteIpEndPoint.Port} Size : {packet.Length} byte");
-                
+                /*
 
-               Debug.LogFormat($"{m_ReceivePacket.m_Transform[0]} " +
-               $"{m_ReceivePacket.m_Transform[1]} " +
-               $"{m_ReceivePacket.m_Transform[2]} " +
-               $"{m_ReceivePacket.m_Rotation[0]} " +
-               $"{m_ReceivePacket.m_Rotation[1]} " +
-               $"{m_ReceivePacket.m_Rotation[2]} " +
+                  Debug.Log($"[Receive] {m_RemoteIpEndPoint.Address}:{m_RemoteIpEndPoint.Port} Size : {packet.Length} byte");
 
-               $"m_ReceivePacket.m_TankId = {m_ReceivePacket.m_TankId } " +
-               $"m_ReceivePacket.m_Health = { m_ReceivePacket.m_Health} "
-               );
 
-               */ 
-               
+                 Debug.LogFormat($"{m_ReceivePacket.m_Transform[0]} " +
+                 $"{m_ReceivePacket.m_Transform[1]} " +
+                 $"{m_ReceivePacket.m_Transform[2]} " +
+                 $"{m_ReceivePacket.m_Rotation[0]} " +
+                 $"{m_ReceivePacket.m_Rotation[1]} " +
+                 $"{m_ReceivePacket.m_Rotation[2]} " +
 
-                SetEnemyTankStatus(m_ReceivePacket);
+                 $"m_ReceivePacket.m_TankId = {m_ReceivePacket.m_TankId } " +
+                 $"m_ReceivePacket.m_Health = { m_ReceivePacket.m_Health} "
+                 );
 
-               
-
+                 */
+                enemyTargetStatus = true;
             }
 
             catch (Exception ex)
@@ -358,7 +378,7 @@ public class GameManager : MonoBehaviour
 
 
         //DoReceivePacket();
-    
+
     }
 
     private void SetEnemyTankStatus(PacketExchange packetenemy)
@@ -370,11 +390,11 @@ public class GameManager : MonoBehaviour
 
         m_Tanks[r_id].m_Instance.GetComponent<TankMovement>().Enemy_Move(new Vector3(packetenemy.m_Transform[0], packetenemy.m_Transform[1], packetenemy.m_Transform[2]));
         m_Tanks[r_id].m_Instance.transform.localEulerAngles = new Vector3(0f, packetenemy.m_Rotation[1], 0f);
-
+        // m_Tanks[r_id].m_Instance.transform.localEulerAngles = Quaternion.Slerp(m_Tanks[r_id].m_Instance.transform.rotation, packetenemy.m_Rotation, 2); 
         //test[r_id]++;
 
         //Debug.LogFormat($" {test[0]} " + $" {test[1]}" + $" {test[2]} " + $" {test[3]}" );
-        
+
         //m_TankHealth[r_id].SetCurrentHealth(packetenemy.m_Health); 따로 처리 필요
 
     }
@@ -383,16 +403,16 @@ public class GameManager : MonoBehaviour
     private void SetSendPacket()
     {
 
-            m_SendPacket.m_Transform[0] = m_Tanks[m_TankId%4].m_Instance.transform.position.x;
-            m_SendPacket.m_Transform[1] = m_Tanks[m_TankId%4].m_Instance.transform.position.y;
-            m_SendPacket.m_Transform[2] = m_Tanks[m_TankId%4].m_Instance.transform.position.z;
+        m_SendPacket.m_Transform[0] = m_Tanks[m_TankId % 4].m_Instance.transform.position.x;
+        m_SendPacket.m_Transform[1] = m_Tanks[m_TankId % 4].m_Instance.transform.position.y;
+        m_SendPacket.m_Transform[2] = m_Tanks[m_TankId % 4].m_Instance.transform.position.z;
 
-            m_SendPacket.m_Rotation[0] = m_Tanks[m_TankId%4].m_Instance.transform.localEulerAngles.x;
-            m_SendPacket.m_Rotation[1] = m_Tanks[m_TankId%4].m_Instance.transform.localEulerAngles.y;
-            m_SendPacket.m_Rotation[2] = m_Tanks[m_TankId%4].m_Instance.transform.localEulerAngles.z;
+        m_SendPacket.m_Rotation[0] = m_Tanks[m_TankId % 4].m_Instance.transform.localEulerAngles.x;
+        m_SendPacket.m_Rotation[1] = m_Tanks[m_TankId % 4].m_Instance.transform.localEulerAngles.y;
+        m_SendPacket.m_Rotation[2] = m_Tanks[m_TankId % 4].m_Instance.transform.localEulerAngles.z;
 
-            m_SendPacket.m_TankId = m_TankId;
-            m_SendPacket.m_Health = m_TankHealth.GetCurrentHealth(); 
+        m_SendPacket.m_TankId = m_TankId;
+        m_SendPacket.m_Health = m_TankHealth.GetCurrentHealth();
     }
 
 
@@ -422,7 +442,7 @@ public class GameManager : MonoBehaviour
     {
         m_IsThreading = false;
 
-        if(m_Client!=null) m_Client.Close();
+        if (m_Client != null) m_Client.Close();
 
 
         if (m_ThrdReceive != null)
@@ -436,11 +456,11 @@ public class GameManager : MonoBehaviour
             {
                 Debug.Log(e.ToString());
             }
-        
-        
+
+
         }
 
-      
+
 
         m_Client_TCP.Close();
     }
@@ -464,23 +484,23 @@ public class GameManager : MonoBehaviour
     private void SpawnAllTanks()
     {
 
-  
+
 
         for (int i = 0; i < m_TankUsers; i++)
         {
             m_Tanks[i].m_Instance =
                 Instantiate(m_TankPrefab, m_Tanks[i].m_SpawnPoint.position, m_Tanks[i].m_SpawnPoint.rotation) as GameObject;
 
-            if (i == m_TankId%4)
+            if (i == m_TankId % 4)
             {
                 m_Tanks[i].m_PlayerNumber = 1; // 자신의 번호로 바꿀필요가 있음
-                m_Tanks[i].Set_name(m_TankId+"");
+                m_Tanks[i].Set_name(m_TankId + "");
             }
 
             else
             {
                 m_Tanks[i].m_PlayerNumber = 200;
-                m_Tanks[i].Set_name((m_TankId+i)+"");
+                m_Tanks[i].Set_name((m_TankId + i) + "");
             }
 
             m_Tanks[i].Setup();
@@ -494,9 +514,9 @@ public class GameManager : MonoBehaviour
 
         for (int i = 0; i < targets.Length; i++)
         {
-            
+
             targets[i] = m_Tanks[i].m_Instance.transform;
-            Debug.Log(i+" "+targets[i]);
+            Debug.Log(i + " " + targets[i]);
         }
 
         m_CameraControl.m_Targets = targets;
@@ -543,7 +563,7 @@ public class GameManager : MonoBehaviour
         while (!OneTankLeft())
         {
             yield return null;
-        
+
         }
 
         yield return null;
