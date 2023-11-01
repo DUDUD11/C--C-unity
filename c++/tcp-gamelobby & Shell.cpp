@@ -43,8 +43,28 @@ int buffToInteger(char* buffer)
 {
 	char a;
 	memcpy(&a, buffer, sizeof(char));
-	return a-'0';
+	return a - '0';
 }
+
+
+typedef struct
+
+{
+	int m_type;
+	char id[20];
+	int len;
+	char char_buf[100];
+}
+chat_data_recv;
+
+typedef struct
+
+{
+	int m_type;
+	int len;
+	char char_buf[1500];
+}
+chat_data_send;
 
 
 
@@ -94,7 +114,7 @@ public:
 };
 
 unordered_map<RemoteClient*, shared_ptr<RemoteClient>> remoteClients;
-RemoteClient** lobby_clients = new RemoteClient* [room_num * room_size];
+RemoteClient** lobby_clients = new RemoteClient * [room_num * room_size];
 //unordered_set<RemoteClient*> GameReadyClients;
 //recursive_mutex GameReadyClients_mutex;
 //int idnum = 0;
@@ -135,24 +155,28 @@ int main()
 
 	auto lobby_renewal = chrono::system_clock::now();
 
+	chat_data_send* Chat_send = new chat_data_send();
+	memset(Chat_send, 0, sizeof(chat_data_send));
+	Chat_send->m_type = 10;
 
-	
+
+
+
 	for (int i = 0; i < room_size * room_num; i++)
 	{
-		memset(&lobby_clients[i], 0, sizeof(RemoteClient));
-
+		lobby_clients[i] = NULL;
 	}
 
-//	memset(&lobby_clients, 0, sizeof(lobby_clients));
-	
+	//	memset(&lobby_clients, 0, sizeof(lobby_clients));
 
-	//redis 영역
+
+		//redis 영역
 	redisContext* c;
 	redisReply* reply;
 
 
 
-	struct timeval timeout = { 5, 500000 }; // 1.5 seconds
+	struct timeval timeout = { 5, 500000 }; // 5 seconds
 	c = redisConnectWithTimeout((char*)"127.0.0.1", 6379, timeout);
 	if (c->err) {
 		printf("Connection error: %s\n", c->errstr);
@@ -166,19 +190,19 @@ int main()
 
 	/*
 
-	// Set a key 
+	// Set a key
 	reply = (redisReply*)redisCommand(c, "SET %s %s", "foo", "hello world");
 	printf("SET: %s\n", reply->str);
 	freeReplyObject(reply);
 
-	// Set a key using binary safe API 
+	// Set a key using binary safe API
 	reply = (redisReply*)redisCommand(c, "SET %b %b", "bar", 3, "hello", 5);
 	printf("SET (binary API): %s\n", reply->str);
 	freeReplyObject(reply);
 
-	
 
-	// Try a GET and two INCR 
+
+	// Try a GET and two INCR
 	reply = (redisReply*)redisCommand(c, "GET foo");
 	printf("GET foo: %s\n", reply->str);
 	freeReplyObject(reply);
@@ -186,12 +210,12 @@ int main()
 	reply = (redisReply*)redisCommand(c, "INCR counter");
 	printf("INCR counter: %lld\n", reply->integer);
 	freeReplyObject(reply);
-	// again ... 
+	// again ...
 	reply = (redisReply*)redisCommand(c, "INCR counter");
 	printf("INCR counter: %lld\n", reply->integer);
 	freeReplyObject(reply);
 
-	// Create a list of numbers, from 0 to 9 
+	// Create a list of numbers, from 0 to 9
 	reply = (redisReply*)redisCommand(c, "DEL mylist");
 	freeReplyObject(reply);
 	for (unsigned int j = 0; j < 10; j++) {
@@ -360,14 +384,13 @@ int main()
 							{
 								if (remoteClient.get() == lobby_clients[i])
 								{
-									
+
 
 									reply = (redisReply*)redisCommand(c, "DEL mylist.%s", &(lobby_clients[i]->m_id[0]));
 
 									printf("DELETE mylist %s", reply->str);
 
-									memset(&lobby_clients[i], 0, sizeof(RemoteClient));
-
+									lobby_clients[i] = NULL;
 
 									freeReplyObject(reply);
 
@@ -384,7 +407,7 @@ int main()
 							}
 
 
-							
+
 
 						}
 						else
@@ -407,18 +430,17 @@ int main()
 
 							else
 							{
-
-								memcpy(&m_dataredis, remoteClient->tcpConnection.m_shellreceiveBuffer, sizeof(m_dataredis));
+								if (m_temp != 10) memcpy(&m_dataredis, remoteClient->tcpConnection.m_shellreceiveBuffer, sizeof(m_dataredis));
 							}
-					
+
 							/*
 							//// 통신 type
-							
+
 							수신
 							1) 포탄
 							2) 로비에서 방클릭했을때
 							3) 로비에 들어왔을때
-							
+
 
 
 							송신
@@ -448,6 +470,344 @@ int main()
 							auto current_time = chrono::system_clock::now();
 							auto sec = chrono::duration_cast<chrono::seconds>(current_time - lobby_renewal);
 
+							//플레이중 포탄처리
+							if (m_temp == 5)
+							{
+								int cur = m_datashell.m_tankid / 4;
+
+								cur *= 4;
+
+
+
+								for (int i = cur; i < cur + room_size; i++)
+								{
+
+
+
+									if (lobby_clients[i] == remoteClient.get() || lobby_clients[i] == NULL) continue;
+
+
+									//		memcpy(remoteClient->tcpConnection.m_shellreceiveBuffer, &m_datashell+4, sizeof(m_datashell)-4);
+
+									lobby_clients[i]->tcpConnection.Send(reinterpret_cast<char*>(&m_datashell), sizeof(shell_data));
+
+								}
+
+
+
+							}
+
+							//로비 방클릭했을때
+							else if (m_temp == 2)
+							{
+
+
+
+								reply = (redisReply*)redisCommand(c, "GET %d", &m_dataredis.m_tankid);
+								printf("GET %d: %s\n", m_dataredis.m_tankid, reply->str);
+
+								redis_data m_data;
+								strcpy(m_data.m_id, m_dataredis.m_id);
+								m_data.m_playing = false;
+								m_data.m_tankid = m_dataredis.m_tankid;
+								m_data.m_type = 2;
+
+
+
+								if (reply->str == NULL)
+								{
+									bool ready_flag = false;
+									int flag_sum = 0;
+
+									int cur = m_dataredis.m_tankid / 4;
+									cur *= 4;
+
+									for (int i = cur; i < cur + room_size; i++)
+									{
+										if (lobby_clients[i] != NULL) flag_sum++;
+
+
+									}
+
+									redis_data m_tempredis;
+									strcpy(m_tempredis.m_id, m_dataredis.m_id);
+									m_tempredis.m_playing = false; // 4개 다차면 true로 바꾸고 게임시작 사인을 보내자.
+									m_tempredis.m_tankid = m_dataredis.m_tankid;
+									m_tempredis.m_type = 1;
+									lobby_clients[m_dataredis.m_tankid] = remoteClient.get();
+
+
+									memcpy(remoteClient->tcpConnection.m_shellreceiveBuffer, &m_tempredis, sizeof(m_tempredis));
+									remoteClient->tcpConnection.Send(reinterpret_cast<char*>(remoteClient->tcpConnection.m_shellreceiveBuffer), sizeof(m_tempredis));
+
+									strcpy(remoteClient->m_id, m_dataredis.m_id);
+
+
+									string str;
+
+									if (!m_tempredis.m_playing)
+									{
+										str = "0 " + to_string(m_tempredis.m_tankid);
+									}
+
+									else
+									{
+										str = "1 " + to_string(m_tempredis.m_tankid);
+									}
+
+
+									freeReplyObject(reply);
+
+									reply = (redisReply*)redisCommand(c, "SET %s %s", &m_tempredis.m_id[0], &str);
+									printf("SET: %s\n", reply->str);
+									freeReplyObject(reply);
+
+
+
+
+
+									if (flag_sum == 3)
+									{
+										m_tempredis.m_playing = true;
+										m_tempredis.m_type = 3;
+
+
+										// point 찾아서 send 해야함.. 3을 보내자.. redis도 playing 바꿔줘야함
+										for (int i = cur; i < cur + room_size; i++)
+
+										{
+											if (lobby_clients[i] == NULL)
+											{
+												cout << "lobby client null pointer error" << endl;
+												return -1;
+											}
+
+											redis_data tempbuffer;
+
+											strcpy(tempbuffer.m_id, lobby_clients[i]->m_id);
+											tempbuffer.m_playing = true;
+											tempbuffer.m_tankid = 0; // dummy 값
+											tempbuffer.m_type = 3;
+
+											memcpy(lobby_clients[i]->tcpConnection.m_shellreceiveBuffer, &tempbuffer, sizeof(tempbuffer));
+
+
+											lobby_clients[i]->tcpConnection.Send(reinterpret_cast<char*>(lobby_clients[i]->tcpConnection.m_shellreceiveBuffer), sizeof(tempbuffer));
+
+
+
+											// m_playing 값을 바꿔주자
+
+											reply = (redisReply*)redisCommand(c, "GET %s", &(lobby_clients[i]->m_id[0]));
+											printf("GET m_playing and tankid: %s\n", reply->str);
+
+											reply->str[0] = '1';
+											//		freeReplyObject(reply);
+
+											reply = (redisReply*)redisCommand(c, "SET %s %s", lobby_clients[i]->m_id, reply->str);
+
+											printf("SET: m_playing and tankid %s\n", reply->str);
+											freeReplyObject(reply);
+
+										}
+
+									}
+
+
+
+
+
+									for (auto i : remoteClients)
+									{
+										if (i.second.get() == remoteClient.get()) continue;
+
+										memcpy(i.second->tcpConnection.m_shellreceiveBuffer, &m_data, sizeof(m_data));
+										i.second->tcpConnection.Send(reinterpret_cast<char*>(i.second->tcpConnection.m_shellreceiveBuffer), sizeof(m_data));
+
+
+
+
+									}
+
+
+								}
+
+								else
+								{
+
+									memcpy(remoteClient->tcpConnection.m_shellreceiveBuffer, &m_data, sizeof(m_data));
+
+									remoteClient->tcpConnection.Send(reinterpret_cast<char*>(remoteClient->tcpConnection.m_shellreceiveBuffer), sizeof(m_data));
+
+								}
+
+
+								//	freeReplyObject(reply);
+
+
+								//	reply = (redisReply*)redisCommand(c, "SET %s %s", "foo", "hello world");
+								//	printf("SET: %s\n", reply->str);
+								//	freeReplyObject(reply);
+
+
+
+
+							}
+
+
+							//10초마다 보내주기 처음접속햇을때도 보내줘야한다.
+
+							else if (m_temp == 3) {
+
+								reply = (redisReply*)redisCommand(c, "RPUSH mylist %s", &m_dataredis.m_id[0]);
+
+								printf("rpush mylist %s\n", reply->str);
+
+								freeReplyObject(reply);
+
+
+								lobby_name_data* m_lobbydata = new lobby_name_data();
+								memset(m_lobbydata, 0, sizeof(lobby_name_data));
+
+
+
+								m_lobbydata->m_type = 4;
+
+								// Let's check what we have inside the list //
+								reply = (redisReply*)redisCommand(c, "LRANGE mylist 0 -1");
+
+								if (reply->type == REDIS_REPLY_ARRAY)
+								{
+									int sz = 0;
+									char* ptr_val = m_lobbydata->name_buf;
+
+									for (unsigned int j = 0; j < reply->elements; j++)
+									{
+
+										for (int lbd_ptr = 0; lbd_ptr < reply->element[j]->len; lbd_ptr++)
+										{
+											*(ptr_val + (sz++)) = reply->element[j]->str[lbd_ptr];
+
+										}
+
+										*(ptr_val + (sz++)) = '\n';
+
+										//memcpy(ptr_val + sz, reply->element[j]->str, reply->element[j]->len); // 되는지 확인할것
+
+										//sz += (reply->element[j]->len) + 1;
+
+										//if (reply->element[j]->len >= 1)
+										//{
+										//	m_lobbydata->name_buf[sz - 1] = '\n';
+										//}
+
+									}
+
+									//printf("%s", m_lobbydata->name_buf);
+									memcpy(remoteClient->tcpConnection.m_shellreceiveBuffer, m_lobbydata, sizeof(lobby_name_data));
+									remoteClient->tcpConnection.Send(reinterpret_cast<char*>(remoteClient->tcpConnection.m_shellreceiveBuffer), sizeof(lobby_name_data));
+
+								}
+
+
+								freeReplyObject(reply);
+
+								delete(m_lobbydata);
+
+
+								reply = (redisReply*)redisCommand(c, "GET %s", m_dataredis.m_id);
+
+								if (reply->str != NULL)
+								{
+									printf("Game is Playing and re enter: %s\n", reply->str);
+
+
+									char* str_ptr = reply->str;
+									str_ptr += 0x02;
+
+									int id = stoi(str_ptr);
+
+
+
+
+									redis_data tempbuffer;
+
+									//id는 가지고있는걸로 하자
+
+									tempbuffer.m_playing = true;
+									tempbuffer.m_tankid = id; // redis 값 확인필요
+									tempbuffer.m_type = 50;
+
+									memcpy(remoteClient->tcpConnection.m_shellreceiveBuffer, &tempbuffer, sizeof(redis_data));
+
+									int qq = id / 4;
+									qq *= 4;
+
+									lobby_clients[id] = remoteClient.get();
+
+									remoteClient->tcpConnection.Send(reinterpret_cast<char*>(remoteClient->tcpConnection.m_shellreceiveBuffer), sizeof(tempbuffer));
+
+
+
+
+
+
+
+
+								}
+
+								freeReplyObject(reply);
+
+
+
+
+							}
+
+							else if (m_temp == 10)
+							{
+								chat_data_recv Chat_recv;
+								ZeroMemory(&Chat_recv, sizeof(chat_data_recv));
+
+								memcpy(&Chat_recv, remoteClient->tcpConnection.m_shellreceiveBuffer, sizeof(chat_data_recv));
+
+								char* point = Chat_send->char_buf;
+								point += Chat_send->len;
+
+								int id_len = strlen(Chat_recv.id);
+
+								for (int i = 0; i < id_len; i++)
+								{
+									*point++ = Chat_recv.id[i];
+								}
+
+								*point++ = ':';
+
+								for (int i = 0; i < Chat_recv.len; i++)
+								{
+									*point++ = Chat_recv.char_buf[i];
+								}
+
+								Chat_send->len += (id_len + 2) + Chat_recv.len;
+
+								*point = '\n';
+
+
+								for (auto i : remoteClients)
+								{
+									i.second->tcpConnection.Send(reinterpret_cast<char*>(Chat_send), sizeof(chat_data_send));
+								}
+
+
+
+							}
+
+
+
+							else
+							{
+								throw Exception("Error occured m_temp value is wrong.");
+
+							}
 
 							if (sec.count() >= 10)
 							{
@@ -498,306 +858,11 @@ int main()
 							}
 
 
-							//플레이중 포탄처리
-							if (m_temp == 5)  
-							{
-								int cur = m_dataredis.m_tankid / 4;
 
-								cur *= 4;
 
-								for (int i = cur; i < cur + room_size; i++)
-								{
-									if (lobby_clients[i] == remoteClient.get()) continue;
 
-							//		memcpy(remoteClient->tcpConnection.m_shellreceiveBuffer, &m_datashell+4, sizeof(m_datashell)-4);
 
-									lobby_clients[i]->tcpConnection.Send(reinterpret_cast<char*>(&m_datashell), sizeof(shell_data));
 
-								}
-
-
-								
-							}
-
-							//로비 방클릭했을때
-							else if (m_temp == 2)
-							{
-							
-
-
-								reply = (redisReply*)redisCommand(c, "GET %d",&m_dataredis.m_tankid);
-								printf("GET %d: %s\n", m_dataredis.m_tankid, reply->str);
-
-								redis_data m_data;
-								strcpy(m_data.m_id, m_dataredis.m_id);
-								m_data.m_playing = false;
-								m_data.m_tankid = m_dataredis.m_tankid;
-								m_data.m_type = 2;
-
-								
-
-								if (reply->str==NULL)
-								{
-									bool ready_flag = false;
-									int flag_sum = 0;
-
-									int cur = m_dataredis.m_tankid / 4;
-									cur *= 4;
-
-									for (int i = cur; i < cur + room_size; i++)
-									{
-										if (lobby_clients[i]!=NULL) flag_sum++;
-									}
-
-									redis_data m_tempredis;
-									strcpy(m_tempredis.m_id, m_dataredis.m_id);
-									m_tempredis.m_playing = false; // 4개 다차면 true로 바꾸고 게임시작 사인을 보내자.
-									m_tempredis.m_tankid = m_dataredis.m_tankid;
-									m_tempredis.m_type = 1;
-									lobby_clients[m_dataredis.m_tankid] = remoteClient.get();
-
-
-									memcpy(remoteClient->tcpConnection.m_shellreceiveBuffer, &m_tempredis, sizeof(m_tempredis));
-									remoteClient->tcpConnection.Send(reinterpret_cast<char*>(remoteClient->tcpConnection.m_shellreceiveBuffer), sizeof(m_tempredis));
-
-									strcpy(remoteClient->m_id, m_dataredis.m_id);
-
-
-									string str;
-
-									if (!m_tempredis.m_playing)
-									{
-										str = "0 " + to_string(m_tempredis.m_tankid);
-									}
-
-									else
-									{
-										str = "1 " + to_string(m_tempredis.m_tankid);
-									}
-
-									printf("%s\n", str);
-
-									freeReplyObject(reply);
-
-									reply = (redisReply*)redisCommand(c, "SET %s %s", &m_tempredis.m_id[0], &str);
-									printf("SET: %s\n", reply->str);
-									freeReplyObject(reply);
-
-									
-
-
-									
-									if (flag_sum == 3)
-									{
-										m_tempredis.m_playing = true;
-										m_tempredis.m_type = 3;
-
-										
-										// point 찾아서 send 해야함.. 3을 보내자.. redis도 playing 바꿔줘야함
-										for (int i = cur; i < cur + room_size; i++)
-
-										{
-											if (lobby_clients[i] == NULL)
-											{
-												cout << "lobby client null pointer error" << endl;
-												return -1;
-											}
-
-											redis_data tempbuffer;
-
-											strcpy(tempbuffer.m_id, lobby_clients[i]->m_id);
-											tempbuffer.m_playing = true;
-											tempbuffer.m_tankid = 0; // dummy 값
-											tempbuffer.m_type = 3;
-
-											memcpy(lobby_clients[i]->tcpConnection.m_shellreceiveBuffer, &tempbuffer, sizeof(tempbuffer));
-
-
-											lobby_clients[i]->tcpConnection.Send(reinterpret_cast<char*>(lobby_clients[i]->tcpConnection.m_shellreceiveBuffer), sizeof(tempbuffer));
-
-
-
-											// m_playing 값을 바꿔주자
-
-											reply = (redisReply*)redisCommand(c, "GET %s", &(lobby_clients[i]->m_id[0]));
-											printf("GET m_playing and tankid: %s\n", reply->str);
-
-											reply->str[0] = '1';
-									//		freeReplyObject(reply);
-
-											reply = (redisReply*)redisCommand(c, "SET %s %s", lobby_clients[i]->m_id, reply->str);
-
-											printf("SET: m_playing and tankid %s\n", reply->str);
-											freeReplyObject(reply);
-
-										}
-
-									}
-
-
-
-
-
-									for (auto i : remoteClients)
-									{
-										if (i.second.get() == remoteClient.get()) continue;
-
-										memcpy(i.second->tcpConnection.m_shellreceiveBuffer, &m_data, sizeof(m_data));
-										i.second->tcpConnection.Send(reinterpret_cast<char*>(i.second->tcpConnection.m_shellreceiveBuffer), sizeof(m_data));
-
-
-
-								
-									}
-
-
-								}
-
-								else
-								{
-	
-									memcpy(remoteClient->tcpConnection.m_shellreceiveBuffer, &m_data, sizeof(m_data));
-
-									remoteClient->tcpConnection.Send(reinterpret_cast<char*>(remoteClient->tcpConnection.m_shellreceiveBuffer), sizeof(m_data));
-
-								}
-
-
-							//	freeReplyObject(reply);
-
-
-							//	reply = (redisReply*)redisCommand(c, "SET %s %s", "foo", "hello world");
-							//	printf("SET: %s\n", reply->str);
-							//	freeReplyObject(reply);
-
-						
-
-
-							}
-							
-
-							//10초마다 보내주기 처음접속햇을때도 보내줘야한다.
-
-							else if (m_temp == 3) {
-
-								reply = (redisReply*)redisCommand(c, "RPUSH mylist %s", &m_dataredis.m_id[0]);
-
-								printf("rpush mylist %s\n", reply->str);
-
-								freeReplyObject(reply);
-
-
-								lobby_name_data* m_lobbydata = new lobby_name_data();
-								memset(m_lobbydata, 0, sizeof(lobby_name_data));
-
-						
-
-								m_lobbydata->m_type = 4;
-
-								// Let's check what we have inside the list //
-								reply = (redisReply*)redisCommand(c, "LRANGE mylist 0 -1");
-
-								if (reply->type == REDIS_REPLY_ARRAY)
-								{
-									int sz = 0;
-									char* ptr_val = m_lobbydata->name_buf;
-
-									for (unsigned int j = 0; j < reply->elements; j++)
-									{
-										
-										for (int lbd_ptr = 0; lbd_ptr < reply->element[j]->len; lbd_ptr++)
-										{
-											*(ptr_val + (sz++)) = reply->element[j]->str[lbd_ptr];
-
-										}
-
-										*(ptr_val + (sz++)) = '\n';
-
-										//memcpy(ptr_val + sz, reply->element[j]->str, reply->element[j]->len); // 되는지 확인할것
-										
-										//sz += (reply->element[j]->len) + 1;
-
-										//if (reply->element[j]->len >= 1)
-										//{
-										//	m_lobbydata->name_buf[sz - 1] = '\n';
-										//}
-
-									}
-
-									//printf("%s", m_lobbydata->name_buf);
-									memcpy(remoteClient->tcpConnection.m_shellreceiveBuffer, m_lobbydata, sizeof(lobby_name_data));
-									remoteClient->tcpConnection.Send(reinterpret_cast<char*>(remoteClient->tcpConnection.m_shellreceiveBuffer), sizeof(lobby_name_data));
-
-								}
-
-
-								freeReplyObject(reply);
-
-								delete(m_lobbydata);
-
-
-									reply = (redisReply*)redisCommand(c, "GET %s", m_dataredis.m_id);
-
-									if (reply->str != NULL )
-									{
-										printf("Game is Playing and re enter: %s\n", reply->str);
-
-										if (buffTOBool(reply->str))
-										{
-
-											char* str_ptr = reply->str;
-											str_ptr += 2;
-
-											int id = buffToInteger(str_ptr);
-
-											redis_data tempbuffer;
-
-											//id는 가지고있는걸로 하자
-
-											tempbuffer.m_playing = true;
-											tempbuffer.m_tankid = id; // redis 값 확인필요
-											tempbuffer.m_type = 50;
-
-											cout << tempbuffer.m_playing+" " << tempbuffer.m_tankid+" " << tempbuffer.m_type << endl;
-
-											memcpy(remoteClient->tcpConnection.m_shellreceiveBuffer, &tempbuffer, sizeof(redis_data));
-
-
-											remoteClient->tcpConnection.Send(reinterpret_cast<char*>(remoteClient->tcpConnection.m_shellreceiveBuffer), sizeof(tempbuffer));
-											
-
-
-										}
-
-
-
-
-									}
-
-									freeReplyObject(reply);
-
-
-
-
-							}
-
-
-				
-
-							else
-							{
-								throw Exception("Error occured m_temp value is wrong.");
-
-							}
-
-
-							
-
-
-
-
-
-							
 							// 다시 수신을 받으려면 overlapped I/O를 걸어야 한다.
 							if (remoteClient->tcpConnection.ReceiveOverlapped() != 0
 								&& WSAGetLastError() != ERROR_IO_PENDING)
@@ -812,13 +877,13 @@ int main()
 
 									if (remoteClient.get() == lobby_clients[i])
 									{
-										
+
 
 										reply = (redisReply*)redisCommand(c, "DEL mylist.%s", lobby_clients[i]->m_id);
 
 										printf("DELETE mylist %s", reply->str);
 
-										memset(&lobby_clients[i], 0, sizeof(RemoteClient));
+										lobby_clients[i] = NULL;
 
 										freeReplyObject(reply);
 
@@ -833,6 +898,11 @@ int main()
 							{
 								// I/O를 걸었다. 완료를 대기하는 중 상태로 바꾸자.
 								remoteClient->tcpConnection.m_isReadOverlapped = true;
+
+
+
+
+
 							}
 						}
 					}
@@ -875,6 +945,7 @@ int main()
 		// 완료를 모두 체크하고 나가도록 하자.
 		redisFree(c);
 		listenSocket.Close();
+		delete(Chat_send);
 		for (auto i : remoteClients)
 		{
 			i.second->tcpConnection.Close();
